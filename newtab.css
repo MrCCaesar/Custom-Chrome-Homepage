@@ -626,6 +626,52 @@ body:not(.edit-mode) .link-delete-btn {
     display: none !important;
 }
 
+/* ========== 链接交换按钮 ========== */
+.link-swap-left,
+.link-swap-right {
+    position: absolute;
+    bottom: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 7px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+
+.link-swap-left {
+    left: 2px;
+}
+
+.link-swap-right {
+    right: 2px;
+}
+
+.link-card:hover .link-swap-left,
+.link-card:hover .link-swap-right {
+    display: flex;
+}
+
+.link-swap-left:hover,
+.link-swap-right:hover {
+    background: rgba(108, 99, 255, 0.4);
+    color: #fff;
+}
+
+/* 显示模式下隐藏交换按钮 */
+body:not(.edit-mode) .link-swap-left,
+body:not(.edit-mode) .link-swap-right {
+    display: none !important;
+}
+
 /* ========== 拖拽手柄 ========== */
 .drag-handle {
     position: absolute;

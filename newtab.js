@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
     searchPosY: null,           // 搜索栏 Y (px)，null = 使用 searchPosition%
     searchPosition: 40,         // 搜索栏初始垂直位置百分比（拖拽后自动更新为 px）
     iconSize: 48,               // 图标大小 (px)，范围 32-96
+    linksPerRow: 0,             // 每行最多网站数，0=不限
     backgroundImage: '',
     editMode: false,
 };
@@ -148,6 +149,7 @@ async function saveSettings() {
         searchPosY: settings.searchPosY,
         searchPosition: settings.searchPosition,
         iconSize: settings.iconSize,
+        linksPerRow: settings.linksPerRow,
         editMode: settings.editMode,
     };
     await chrome.storage.sync.set({ [SYNC_SETTINGS_KEY]: syncSettings }).catch(() => { });
@@ -277,6 +279,10 @@ function applySettings() {
     document.body.style.setProperty('--icon-size', settings.iconSize + 'px');
     document.getElementById('icon-size-slider').value = settings.iconSize;
     document.getElementById('icon-size-label').textContent = settings.iconSize + 'px';
+    // 每行网站数
+    document.getElementById('links-per-row-slider').value = settings.linksPerRow || 0;
+    updateLinksPerRowLabel();
+    applyLinksPerRow();
     // 应用所有位置
     applyAllPositions();
     // 应用背景
@@ -374,6 +380,23 @@ function updateSearchPositionFromSlider() {
     saveSettings();
 }
 
+function updateLinksPerRowLabel() {
+    const val = settings.linksPerRow || 0;
+    document.getElementById('links-per-row-label').textContent = val === 0 ? '不限' : val + ' 个';
+}
+
+function applyLinksPerRow() {
+    const perRow = settings.linksPerRow || 0;
+    document.querySelectorAll('.link-list').forEach((list) => {
+        if (perRow > 0) {
+            const cardW = settings.iconSize + 20; // icon + padding + gap
+            list.style.maxWidth = (perRow * cardW) + 'px';
+        } else {
+            list.style.maxWidth = '';
+        }
+    });
+}
+
 function applyBackground() {
     const bgLayer = document.getElementById('bg-layer');
     if (settings.backgroundImage) {
@@ -425,6 +448,7 @@ function renderBookmarks() {
     attachImageEvents();
     // 渲染后立即应用位置（保留已有位置，为新分组计算默认位置）
     applyAllPositions();
+    applyLinksPerRow();
 }
 
 function attachImageEvents() {
@@ -504,6 +528,8 @@ function createLinkCard(link, groupIndex, linkIndex) {
       </div>
       <span class="link-name">${escapeHtml(link.name)}</span>
       <button class="link-delete-btn" data-action="delete-link" data-group-index="${groupIndex}" data-link-index="${linkIndex}">✕</button>
+      <button class="link-swap-left edit-only" data-action="swap-left" data-group-index="${groupIndex}" data-link-index="${linkIndex}" title="左移">◀</button>
+      <button class="link-swap-right edit-only" data-action="swap-right" data-group-index="${groupIndex}" data-link-index="${linkIndex}" title="右移">▶</button>
     </a>
   `;
 }
@@ -656,6 +682,15 @@ function bindEvents() {
         settings.iconSize = parseInt(e.target.value);
         document.getElementById('icon-size-label').textContent = settings.iconSize + 'px';
         document.body.style.setProperty('--icon-size', settings.iconSize + 'px');
+        applyLinksPerRow();
+        saveSettings();
+    });
+
+    // 每行网站数
+    document.getElementById('links-per-row-slider').addEventListener('input', (e) => {
+        settings.linksPerRow = parseInt(e.target.value);
+        updateLinksPerRowLabel();
+        applyLinksPerRow();
         saveSettings();
     });
 
@@ -779,6 +814,16 @@ function bindEvents() {
                 break;
             case 'group-bg-clear':
                 clearGroupBg(groupIndex);
+                break;
+            case 'swap-left':
+                e.preventDefault();
+                e.stopPropagation();
+                swapLinks(groupIndex, parseInt(target.dataset.linkIndex), -1);
+                break;
+            case 'swap-right':
+                e.preventDefault();
+                e.stopPropagation();
+                swapLinks(groupIndex, parseInt(target.dataset.linkIndex), 1);
                 break;
         }
     });
@@ -936,6 +981,15 @@ function deleteLink(groupIndex, linkIndex) {
         bookmarks[groupIndex].links.splice(linkIndex, 1);
         saveBookmarks().then(() => renderBookmarks());
     }
+}
+
+function swapLinks(groupIndex, linkIndex, direction) {
+    const links = bookmarks[groupIndex].links;
+    const newIndex = linkIndex + direction;
+    if (newIndex < 0 || newIndex >= links.length) return;
+    // 交换两个链接
+    [links[linkIndex], links[newIndex]] = [links[newIndex], links[linkIndex]];
+    saveBookmarks().then(() => renderBookmarks());
 }
 
 function saveGroupName() {
