@@ -61,24 +61,167 @@ let bookmarks = JSON.parse(JSON.stringify(DEFAULT_BOOKMARKS));
 let editMode = false;  // 当前编辑/显示模式状态
 
 // ============================================================
-//  存储操作
+//  存储操作 ─ 分层架构
+//  · chrome.storage.sync: 轻量设置 + 书签结构（跨设备自动同步）
+//  · chrome.storage.local: 背景图 Data URL（数据量大，仅本地）
 // ============================================================
+const SYNC_SETTINGS_KEY = 'syncSettings_v2';
+const SYNC_BOOKMARKS_KEY = 'syncBookmarks_v2';
+const LOCAL_BG_KEY = 'localBg_v2';
+
+// 背景图内存缓存（避免读写竞争）
+let localBgCache = { global: '', groups: {} };
+
 async function loadData() {
-    const result = await chrome.storage.local.get(['settings', 'bookmarks']);
-    if (result.settings) {
-        settings = { ...DEFAULT_SETTINGS, ...result.settings };
+    // 1. 旧格式迁移
+    await migrateOldData();
+
+    // 2. 加载同步数据（设置 + 书签结构）
+    const syncResult = await chrome.storage.sync.get([SYNC_SETTINGS_KEY, SYNC_BOOKMARKS_KEY]);
+    if (syncResult[SYNC_SETTINGS_KEY]) {
+        settings = { ...DEFAULT_SETTINGS, ...syncResult[SYNC_SETTINGS_KEY] };
     }
-    if (result.bookmarks) {
-        bookmarks = result.bookmarks;
+    if (syncResult[SYNC_BOOKMARKS_KEY] && syncResult[SYNC_BOOKMARKS_KEY].length > 0) {
+        bookmarks = syncResult[SYNC_BOOKMARKS_KEY];
     }
+
+    // 3. 加载本地背景图
+    const localResult = await chrome.storage.local.get([LOCAL_BG_KEY]);
+    localBgCache = localResult[LOCAL_BG_KEY] || { global: '', groups: {} };
+
+    // 4. 合并背景图到运行时数据
+    settings.backgroundImage = localBgCache.global || '';
+    bookmarks.forEach((g, i) => {
+        g.backgroundImage = localBgCache.groups[String(i)] || '';
+    });
+}
+
+async function migrateOldData() {
+    const oldResult = await chrome.storage.local.get(['settings', 'bookmarks']);
+    if (!oldResult.settings && !oldResult.bookmarks) return;
+
+    const oldSettings = oldResult.settings || {};
+    const oldBookmarks = oldResult.bookmarks || [];
+
+    // 构建新格式
+    const syncSettings = {
+        searchEngine: oldSettings.searchEngine || DEFAULT_SETTINGS.searchEngine,
+        searchPosition: oldSettings.searchPosition ?? DEFAULT_SETTINGS.searchPosition,
+        iconSize: oldSettings.iconSize || DEFAULT_SETTINGS.iconSize,
+        editMode: oldSettings.editMode || false,
+    };
+    const syncBookmarks = oldBookmarks.map((g) => ({ ...g, backgroundImage: '' }));
+    const bgData = {
+        global: oldSettings.backgroundImage || '',
+        groups: {},
+    };
+    oldBookmarks.forEach((g, i) => {
+        if (g.backgroundImage) bgData.groups[String(i)] = g.backgroundImage;
+    });
+
+    // 写入新位置
+    await chrome.storage.sync.set({ [SYNC_SETTINGS_KEY]: syncSettings, [SYNC_BOOKMARKS_KEY]: syncBookmarks }).catch(() => { });
+    await chrome.storage.local.set({ [LOCAL_BG_KEY]: bgData });
+    // 清理旧数据
+    await chrome.storage.local.remove(['settings', 'bookmarks']);
 }
 
 async function saveSettings() {
-    await chrome.storage.local.set({ settings });
+    const syncSettings = {
+        searchEngine: settings.searchEngine,
+        searchPosition: settings.searchPosition,
+        iconSize: settings.iconSize,
+        editMode: settings.editMode,
+    };
+    await chrome.storage.sync.set({ [SYNC_SETTINGS_KEY]: syncSettings }).catch(() => { });
+    // 同时持久化全局背景图
+    localBgCache.global = settings.backgroundImage || '';
+    await chrome.storage.local.set({ [LOCAL_BG_KEY]: localBgCache });
 }
 
 async function saveBookmarks() {
-    await chrome.storage.local.set({ bookmarks });
+    const syncBookmarks = bookmarks.map((g) => ({ ...g, backgroundImage: '' }));
+    await chrome.storage.sync.set({ [SYNC_BOOKMARKS_KEY]: syncBookmarks }).catch(() => { });
+    // 同时持久化分组背景图
+    localBgCache.groups = {};
+    bookmarks.forEach((g, i) => {
+        if (g.backgroundImage) localBgCache.groups[String(i)] = g.backgroundImage;
+    });
+    await chrome.storage.local.set({ [LOCAL_BG_KEY]: localBgCache });
+}
+
+// ============================================================
+//  导出 / 导入 全部配置
+// ============================================================
+function exportAllData() {
+    const exportObj = {
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        syncSettings: {
+            searchEngine: settings.searchEngine,
+            searchPosition: settings.searchPosition,
+            iconSize: settings.iconSize,
+            editMode: settings.editMode,
+        },
+        syncBookmarks: bookmarks.map((g) => ({ ...g, backgroundImage: '' })),
+        localBg: {
+            global: settings.backgroundImage || '',
+            groups: localBgCache.groups || {},
+        },
+    };
+
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `chrome-homepage-backup-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function importAllData(file) {
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (!data.version || !data.syncSettings) {
+            alert('无效的备份文件格式');
+            return;
+        }
+
+        // 合并设置
+        settings = { ...DEFAULT_SETTINGS, ...data.syncSettings };
+        // 合并书签
+        if (data.syncBookmarks && data.syncBookmarks.length > 0) {
+            bookmarks = data.syncBookmarks;
+        }
+        // 合并背景图
+        localBgCache = data.localBg || { global: '', groups: {} };
+        settings.backgroundImage = localBgCache.global || '';
+        bookmarks.forEach((g, i) => {
+            g.backgroundImage = localBgCache.groups[String(i)] || '';
+        });
+
+        // 写入存储
+        const syncSettings = {
+            searchEngine: settings.searchEngine,
+            searchPosition: settings.searchPosition,
+            iconSize: settings.iconSize,
+            editMode: settings.editMode,
+        };
+        await chrome.storage.sync.set({ [SYNC_SETTINGS_KEY]: syncSettings, [SYNC_BOOKMARKS_KEY]: bookmarks.map(g => ({ ...g, backgroundImage: '' })) }).catch(() => { });
+        await chrome.storage.local.set({ [LOCAL_BG_KEY]: localBgCache });
+
+        // 刷新界面
+        editMode = settings.editMode || false;
+        applySettings();
+        applyMode();
+        renderAll();
+        alert('✅ 配置导入成功！');
+    } catch (err) {
+        alert('❌ 导入失败：' + err.message);
+    }
 }
 
 // ============================================================
@@ -344,6 +487,17 @@ function bindEvents() {
     // ---------- 设置面板 ----------
     document.getElementById('settings-close').addEventListener('click', () => {
         toggleSettings(false);
+    });
+
+    // ---------- 导出 / 导入 ----------
+    document.getElementById('export-btn').addEventListener('click', exportAllData);
+    document.getElementById('import-btn').addEventListener('click', () => {
+        document.getElementById('import-file-input').click();
+    });
+    document.getElementById('import-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) importAllData(file);
+        e.target.value = '';
     });
 
     // 搜索引擎切换

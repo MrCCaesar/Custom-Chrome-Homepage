@@ -63,6 +63,16 @@
                     <button data-size="large" class="size-btn">大</button>
                 </div>
             </div>
+            <!-- 数据同步 -->
+            <div class="setting-group">
+                <label>数据同步</label>
+                <p class="setting-hint">设置和书签自动通过 Chrome 账号跨设备同步（背景图仅本地存储）</p>
+                <div class="sync-actions">
+                    <button id="export-btn" class="btn">📤 导出配置</button>
+                    <button id="import-btn" class="btn">📥 导入配置</button>
+                </div>
+                <input type="file" id="import-file-input" accept=".json" class="hidden">
+            </div>
         </div>
     </div>
 
