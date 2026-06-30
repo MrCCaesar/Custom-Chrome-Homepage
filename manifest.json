@@ -1,0 +1,28 @@
+{
+    "manifest_version": 3,
+    "name": "Custom Homepage",
+    "version": "1.0.0",
+    "description": "个性化新标签页 - 支持搜索引擎搜索栏、背景图片、分组书签",
+    "chrome_url_overrides": {
+        "newtab": "newtab.html"
+    },
+    "permissions": [
+        "storage",
+        "unlimitedStorage"
+    ],
+    "host_permissions": [
+        "https://www.google.com/*",
+        "https://*.bing.com/*",
+        "https://*.baidu.com/*",
+        "https://*.duckduckgo.com/*",
+        "https://*.github.com/*"
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'"
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    }
+}

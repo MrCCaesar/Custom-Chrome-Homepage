@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新标签页</title>
+    <link rel="stylesheet" href="newtab.css">
+</head>
+
+<body>
+    <!-- 背景图层 -->
+    <div id="bg-layer"></div>
+
+    <!-- 模式切换按钮 -->
+    <div id="mode-toggle" title="切换 编辑/显示 模式">
+        <span class="mode-icon-edit">✎</span>
+        <span class="mode-icon-display">👁</span>
+    </div>
+
+    <!-- 背景图片设置按钮 (仅编辑模式) -->
+    <div id="bg-btn" class="edit-only" title="设置全局背景图片">🖼️</div>
+
+    <!-- 设置面板 -->
+    <div id="settings-panel" class="hidden">
+        <div class="settings-header">
+            <h3>⚙️ 设置</h3>
+            <button id="settings-close" class="icon-btn">✕</button>
+        </div>
+        <div class="settings-body">
+            <!-- 搜索引擎选择 -->
+            <div class="setting-group">
+                <label>搜索引擎</label>
+                <select id="search-engine-select">
+                    <option value="google">Google</option>
+                    <option value="bing">Bing</option>
+                    <option value="baidu">百度</option>
+                    <option value="duckduckgo">DuckDuckGo</option>
+                    <option value="github">GitHub</option>
+                </select>
+            </div>
+            <!-- 搜索栏垂直位置 -->
+            <div class="setting-group">
+                <label>搜索栏位置: <span id="search-pos-label">40%</span></label>
+                <input type="range" id="search-pos-slider" min="5" max="85" value="40" step="1">
+            </div>
+            <!-- 背景图片 -->
+            <div class="setting-group">
+                <label>背景图片</label>
+                <div class="bg-actions">
+                    <button id="bg-upload-btn" class="btn">📁 选择图片</button>
+                    <button id="bg-clear-btn" class="btn btn-danger">✕ 清除背景</button>
+                </div>
+                <input type="file" id="bg-file-input" accept="image/*" class="hidden">
+                <input type="file" id="group-bg-file-input" accept="image/*" class="hidden">
+            </div>
+            <!-- 图标尺寸 -->
+            <div class="setting-group">
+                <label>图标尺寸</label>
+                <div class="size-toggle">
+                    <button data-size="small" class="size-btn">小</button>
+                    <button data-size="medium" class="size-btn active">中</button>
+                    <button data-size="large" class="size-btn">大</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div id="main-content">
+        <!-- 搜索栏 -->
+        <div id="search-container">
+            <div class="search-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" placeholder="搜索...">
+            </div>
+        </div>
+
+        <!-- 书签区域 -->
+        <div id="bookmarks-container">
+            <!-- 动态渲染 -->
+        </div>
+
+        <!-- 添加分组按钮 -->
+        <div id="add-group-area" class="edit-only">
+            <button id="add-group-btn" class="add-btn">+ 添加分组</button>
+        </div>
+    </div>
+
+    <!-- 编辑链接弹窗 -->
+    <div id="link-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">添加链接</h3>
+                <button class="icon-btn modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>网站名称</label>
+                    <input type="text" id="link-name-input" placeholder="例如: GitHub">
+                </div>
+                <div class="form-group">
+                    <label>网站地址</label>
+                    <input type="text" id="link-url-input" placeholder="例如: https://github.com">
+                </div>
+                <div class="form-group">
+                    <label>自定义图标URL (可选)</label>
+                    <input type="text" id="link-icon-input" placeholder="留空则自动获取">
+                </div>
+                <input type="hidden" id="link-group-index">
+                <input type="hidden" id="link-edit-index">
+            </div>
+            <div class="modal-footer">
+                <button id="link-save-btn" class="btn btn-primary">保存</button>
+                <button class="btn modal-close">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑分组名称弹窗 -->
+    <div id="group-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑分组名称</h3>
+                <button class="icon-btn modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>分组名称</label>
+                    <input type="text" id="group-name-input" placeholder="例如: 常用工具">
+                </div>
+                <input type="hidden" id="group-edit-index">
+            </div>
+            <div class="modal-footer">
+                <button id="group-save-btn" class="btn btn-primary">保存</button>
+                <button class="btn modal-close">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="newtab.js"></script>
+</body>
+
+</html>
