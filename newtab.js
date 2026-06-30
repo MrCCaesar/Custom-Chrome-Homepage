@@ -29,16 +29,21 @@ const SEARCH_ENGINES = {
 // ---------- 默认数据 ----------
 const DEFAULT_SETTINGS = {
     searchEngine: 'google',
-    searchPosition: 40,       // 搜索栏垂直位置百分比
-    iconSize: 'medium',       // small | medium | large
-    backgroundImage: '',      // data URL
-    editMode: false,          // 编辑模式 vs 显示模式
+    customEngineName: '',       // 自定义搜索引擎名称
+    customEngineUrl: '',        // 自定义搜索引擎 URL 模板
+    searchPosX: null,           // 搜索栏 X (px)，null = 居中
+    searchPosY: null,           // 搜索栏 Y (px)，null = 使用 searchPosition%
+    searchPosition: 40,         // 搜索栏初始垂直位置百分比（拖拽后自动更新为 px）
+    iconSize: 48,               // 图标大小 (px)，范围 32-96
+    backgroundImage: '',
+    editMode: false,
 };
 
 const DEFAULT_BOOKMARKS = [
     {
         name: '常用工具',
         backgroundImage: '',
+        posX: null, posY: null,
         links: [
             { name: 'GitHub', url: 'https://github.com', icon: '' },
             { name: 'Google', url: 'https://www.google.com', icon: '' },
@@ -48,6 +53,7 @@ const DEFAULT_BOOKMARKS = [
     {
         name: '社交媒体',
         backgroundImage: '',
+        posX: null, posY: null,
         links: [
             { name: '微博', url: 'https://weibo.com', icon: '' },
             { name: '知乎', url: 'https://www.zhihu.com', icon: '' },
@@ -79,7 +85,10 @@ async function loadData() {
     // 2. 加载同步数据（设置 + 书签结构）
     const syncResult = await chrome.storage.sync.get([SYNC_SETTINGS_KEY, SYNC_BOOKMARKS_KEY]);
     if (syncResult[SYNC_SETTINGS_KEY]) {
-        settings = { ...DEFAULT_SETTINGS, ...syncResult[SYNC_SETTINGS_KEY] };
+        const raw = syncResult[SYNC_SETTINGS_KEY];
+        settings = { ...DEFAULT_SETTINGS, ...raw };
+        // 兼容旧 iconSize 格式
+        settings.iconSize = normalizeIconSize(raw.iconSize);
     }
     if (syncResult[SYNC_BOOKMARKS_KEY] && syncResult[SYNC_BOOKMARKS_KEY].length > 0) {
         bookmarks = syncResult[SYNC_BOOKMARKS_KEY];
@@ -106,8 +115,12 @@ async function migrateOldData() {
     // 构建新格式
     const syncSettings = {
         searchEngine: oldSettings.searchEngine || DEFAULT_SETTINGS.searchEngine,
+        customEngineName: oldSettings.customEngineName || '',
+        customEngineUrl: oldSettings.customEngineUrl || '',
+        searchPosX: oldSettings.searchPosX ?? null,
+        searchPosY: oldSettings.searchPosY ?? null,
         searchPosition: oldSettings.searchPosition ?? DEFAULT_SETTINGS.searchPosition,
-        iconSize: oldSettings.iconSize || DEFAULT_SETTINGS.iconSize,
+        iconSize: normalizeIconSize(oldSettings.iconSize),
         editMode: oldSettings.editMode || false,
     };
     const syncBookmarks = oldBookmarks.map((g) => ({ ...g, backgroundImage: '' }));
@@ -129,6 +142,10 @@ async function migrateOldData() {
 async function saveSettings() {
     const syncSettings = {
         searchEngine: settings.searchEngine,
+        customEngineName: settings.customEngineName,
+        customEngineUrl: settings.customEngineUrl,
+        searchPosX: settings.searchPosX,
+        searchPosY: settings.searchPosY,
         searchPosition: settings.searchPosition,
         iconSize: settings.iconSize,
         editMode: settings.editMode,
@@ -159,6 +176,10 @@ function exportAllData() {
         exportedAt: new Date().toISOString(),
         syncSettings: {
             searchEngine: settings.searchEngine,
+            customEngineName: settings.customEngineName,
+            customEngineUrl: settings.customEngineUrl,
+            searchPosX: settings.searchPosX,
+            searchPosY: settings.searchPosY,
             searchPosition: settings.searchPosition,
             iconSize: settings.iconSize,
             editMode: settings.editMode,
@@ -206,6 +227,10 @@ async function importAllData(file) {
         // 写入存储
         const syncSettings = {
             searchEngine: settings.searchEngine,
+            customEngineName: settings.customEngineName,
+            customEngineUrl: settings.customEngineUrl,
+            searchPosX: settings.searchPosX,
+            searchPosY: settings.searchPosY,
             searchPosition: settings.searchPosition,
             iconSize: settings.iconSize,
             editMode: settings.editMode,
@@ -230,6 +255,15 @@ async function importAllData(file) {
 async function init() {
     await loadData();
     editMode = settings.editMode || false;
+    // 为搜索栏添加拖拽手柄
+    const searchContainer = document.getElementById('search-container');
+    if (!searchContainer.querySelector('.search-drag-handle')) {
+        const handle = document.createElement('div');
+        handle.className = 'search-drag-handle edit-only';
+        handle.dataset.drag = 'search';
+        handle.textContent = '⋮';
+        searchContainer.appendChild(handle);
+    }
     applySettings();
     applyMode();
     renderAll();
@@ -239,26 +273,82 @@ async function init() {
 }
 
 function applySettings() {
-    // 应用图标尺寸
-    document.body.setAttribute('data-icon-size', settings.iconSize);
-    // 应用搜索栏位置
-    updateSearchPosition();
+    // 应用图标尺寸（CSS 变量）
+    document.body.style.setProperty('--icon-size', settings.iconSize + 'px');
+    document.getElementById('icon-size-slider').value = settings.iconSize;
+    document.getElementById('icon-size-label').textContent = settings.iconSize + 'px';
+    // 应用所有位置
+    applyAllPositions();
     // 应用背景
     applyBackground();
-    // 搜索引擎下拉
-    document.getElementById('search-engine-select').value = settings.searchEngine;
+    // 搜索引擎下拉 + 自定义引擎字段
+    populateSearchEngineSelect();
     // 搜索栏位置滑块
     document.getElementById('search-pos-slider').value = settings.searchPosition;
     document.getElementById('search-pos-label').textContent = settings.searchPosition + '%';
-    // 图标尺寸按钮
-    document.querySelectorAll('.size-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.size === settings.iconSize);
+}
+
+function populateSearchEngineSelect() {
+    const sel = document.getElementById('search-engine-select');
+    // 检查自定义引擎是否在选项中
+    const hasCustom = settings.customEngineName && settings.customEngineUrl;
+    let value = settings.searchEngine;
+    if (hasCustom && settings.searchEngine !== 'google' && settings.searchEngine !== 'bing' &&
+        settings.searchEngine !== 'baidu' && settings.searchEngine !== 'duckduckgo' && settings.searchEngine !== 'github') {
+        value = '__custom__';
+    }
+    sel.value = value;
+    // 显示/隐藏自定义字段
+    const fields = document.getElementById('custom-engine-fields');
+    const nameInput = document.getElementById('custom-engine-name');
+    const urlInput = document.getElementById('custom-engine-url');
+    if (value === '__custom__') {
+        fields.classList.remove('hidden');
+        nameInput.value = settings.customEngineName || '';
+        urlInput.value = settings.customEngineUrl || '';
+    } else {
+        fields.classList.add('hidden');
+    }
+}
+
+function applyAllPositions() {
+    // 搜索栏位置
+    const searchEl = document.getElementById('search-container');
+    if (settings.searchPosX !== null && settings.searchPosY !== null) {
+        searchEl.style.left = settings.searchPosX + 'px';
+        searchEl.style.top = settings.searchPosY + 'px';
+        searchEl.style.transform = 'none';
+    } else {
+        // 默认居中
+        searchEl.style.left = '50%';
+        searchEl.style.top = settings.searchPosition + 'vh';
+        searchEl.style.transform = 'translateX(-50%)';
+    }
+    // 搜索栏拖拽手柄
+    const searchDrag = searchEl.querySelector('.search-drag-handle');
+    if (searchDrag) {
+        searchDrag.style.display = editMode ? 'flex' : 'none';
+    }
+
+    // 分组位置
+    document.querySelectorAll('.bookmark-group').forEach((el) => {
+        const gi = parseInt(el.dataset.groupIndex);
+        const g = bookmarks[gi];
+        if (g && g.posX !== null && g.posY !== null) {
+            el.style.left = g.posX + 'px';
+            el.style.top = g.posY + 'px';
+        }
+        // 拖拽手柄
+        const handle = el.querySelector('.drag-handle');
+        if (handle) handle.style.display = editMode ? 'flex' : 'none';
     });
 }
 
-function updateSearchPosition() {
-    const container = document.getElementById('search-container');
-    container.style.marginTop = settings.searchPosition + 'vh';
+function updateSearchPositionFromSlider() {
+    settings.searchPosX = null;  // 重置为居中模式
+    settings.searchPosY = null;
+    applyAllPositions();
+    saveSettings();
 }
 
 function applyBackground() {
@@ -284,6 +374,7 @@ function toggleEditMode() {
     editMode = !editMode;
     settings.editMode = editMode;
     applyMode();
+    applyAllPositions();  // 刷新拖拽手柄显隐
     // 切换模式时关闭所有弹窗和设置面板
     closeAllModals();
     toggleSettings(false);
@@ -295,6 +386,7 @@ function toggleEditMode() {
 // ============================================================
 function renderAll() {
     renderBookmarks();
+    applyAllPositions();
 }
 
 function renderBookmarks() {
@@ -343,6 +435,7 @@ function attachImageEvents() {
 function createGroupElement(group, groupIndex) {
     const div = document.createElement('div');
     div.className = 'bookmark-group';
+    div.dataset.groupIndex = groupIndex;
     if (group.backgroundImage) {
         div.classList.add('has-group-bg');
     }
@@ -352,6 +445,7 @@ function createGroupElement(group, groupIndex) {
         : '';
 
     div.innerHTML = `
+    <div class="drag-handle edit-only" data-drag="group" data-group-index="${groupIndex}">⋮⋮</div>
     ${group.backgroundImage ? `<div class="group-bg" style="${bgStyle}"></div><div class="group-bg-overlay"></div>` : ''}
     <div class="group-header">
       <span class="group-title" data-group-index="${groupIndex}" title="点击编辑分组名称">${escapeHtml(group.name)}</span>
@@ -459,6 +553,13 @@ function escapeAttr(str) {
     return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function normalizeIconSize(val) {
+    if (typeof val === 'number') return val;
+    if (val === 'small') return 32;
+    if (val === 'large') return 64;
+    return 48; // 'medium' 或其他默认值
+}
+
 // ============================================================
 //  事件绑定
 // ============================================================
@@ -472,8 +573,7 @@ function bindEvents() {
         if (e.key === 'Enter') {
             const query = searchInput.value.trim();
             if (query) {
-                const engine = SEARCH_ENGINES[settings.searchEngine];
-                window.location.href = engine.url + encodeURIComponent(query);
+                window.location.href = getSearchUrl(query);
             }
         }
     });
@@ -502,16 +602,99 @@ function bindEvents() {
 
     // 搜索引擎切换
     document.getElementById('search-engine-select').addEventListener('change', (e) => {
-        settings.searchEngine = e.target.value;
-        saveSettings();
+        const val = e.target.value;
+        if (val === '__custom__') {
+            document.getElementById('custom-engine-fields').classList.remove('hidden');
+            // 不立即改变 searchEngine，等用户保存自定义引擎
+        } else {
+            document.getElementById('custom-engine-fields').classList.add('hidden');
+            settings.searchEngine = val;
+            saveSettings();
+        }
     });
+    // 自定义引擎字段变化时自动保存
+    document.getElementById('custom-engine-name').addEventListener('input', () => saveCustomEngine());
+    document.getElementById('custom-engine-url').addEventListener('input', () => saveCustomEngine());
 
-    // 搜索栏位置调节
+    // 搜索栏位置调节（滑块 → 重置为百分比定位）
     document.getElementById('search-pos-slider').addEventListener('input', (e) => {
         settings.searchPosition = parseInt(e.target.value);
         document.getElementById('search-pos-label').textContent = settings.searchPosition + '%';
-        updateSearchPosition();
+        updateSearchPositionFromSlider();
+    });
+
+    // 图标尺寸（连续滑块）
+    document.getElementById('icon-size-slider').addEventListener('input', (e) => {
+        settings.iconSize = parseInt(e.target.value);
+        document.getElementById('icon-size-label').textContent = settings.iconSize + 'px';
+        document.body.style.setProperty('--icon-size', settings.iconSize + 'px');
         saveSettings();
+    });
+
+    // ======== 拖拽 ========
+    let dragState = null;
+
+    document.addEventListener('mousedown', (e) => {
+        if (!editMode) return;
+        const handle = e.target.closest('[data-drag]');
+        if (!handle) return;
+        e.preventDefault();
+
+        const dragType = handle.dataset.drag;
+        let el;
+        if (dragType === 'search') {
+            el = document.getElementById('search-container');
+        } else if (dragType === 'group') {
+            el = handle.closest('.bookmark-group');
+        }
+        if (!el) return;
+
+        dragState = {
+            el,
+            type: dragType,
+            groupIndex: handle.dataset.groupIndex ? parseInt(handle.dataset.groupIndex) : null,
+            startX: e.clientX,
+            startY: e.clientY,
+            startLeft: el.offsetLeft,
+            startTop: el.offsetTop,
+        };
+        el.classList.add('dragging');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!dragState) return;
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        let newLeft = dragState.startLeft + dx;
+        let newTop = dragState.startTop + dy;
+
+        // 边界限制
+        const el = dragState.el;
+        newLeft = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, newLeft));
+        newTop = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, newTop));
+
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+        if (dragState.type === 'search') {
+            el.style.transform = 'none';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!dragState) return;
+        dragState.el.classList.remove('dragging');
+
+        const el = dragState.el;
+        if (dragState.type === 'search') {
+            settings.searchPosX = el.offsetLeft;
+            settings.searchPosY = el.offsetTop;
+            saveSettings();
+        } else if (dragState.type === 'group' && dragState.groupIndex !== null) {
+            bookmarks[dragState.groupIndex].posX = el.offsetLeft;
+            bookmarks[dragState.groupIndex].posY = el.offsetTop;
+            saveBookmarks();
+        }
+        dragState = null;
     });
 
     // 背景图片上传
@@ -536,17 +719,6 @@ function bindEvents() {
         settings.backgroundImage = '';
         applyBackground();
         saveSettings();
-    });
-
-    // 图标尺寸切换
-    document.querySelectorAll('.size-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            settings.iconSize = btn.dataset.size;
-            document.querySelectorAll('.size-btn').forEach((b) => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.body.setAttribute('data-icon-size', settings.iconSize);
-            saveSettings();
-        });
     });
 
     // ---------- 书签区域事件委托 (编辑操作仅编辑模式生效) ----------
@@ -765,6 +937,7 @@ function addGroup() {
     bookmarks.push({
         name: '新分组',
         backgroundImage: '',
+        posX: null, posY: null,
         links: [],
     });
     saveBookmarks().then(() => {
@@ -789,6 +962,30 @@ function openGroupBgUpload(groupIndex) {
 function clearGroupBg(groupIndex) {
     bookmarks[groupIndex].backgroundImage = '';
     saveBookmarks().then(() => renderBookmarks());
+}
+
+// ============================================================
+//  自定义搜索引擎
+// ============================================================
+function saveCustomEngine() {
+    const name = document.getElementById('custom-engine-name').value.trim();
+    const url = document.getElementById('custom-engine-url').value.trim();
+    settings.customEngineName = name;
+    settings.customEngineUrl = url;
+    if (name && url) {
+        settings.searchEngine = '__custom__';
+    }
+    saveSettings();
+}
+
+function getSearchUrl(query) {
+    if (settings.searchEngine === '__custom__' && settings.customEngineUrl) {
+        return settings.customEngineUrl + encodeURIComponent(query);
+    }
+    const engine = SEARCH_ENGINES[settings.searchEngine];
+    if (engine) return engine.url + encodeURIComponent(query);
+    // fallback to Google
+    return 'https://www.google.com/search?q=' + encodeURIComponent(query);
 }
 
 // ============================================================

@@ -387,53 +387,21 @@ body.edit-mode .edit-only.add-link-btn {
     background: rgba(255, 255, 255, 0.25);
 }
 
-/* ========== 图标尺寸切换 ========== */
-.size-toggle {
-    display: flex;
-    gap: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 3px;
-    width: fit-content;
-}
+/* ========== 图标尺寸（通过 CSS 变量动态控制，见下方 .link-icon-wrapper） ========== */
 
-.size-btn {
-    padding: 6px 16px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.6);
-    cursor: pointer;
-    font-size: 13px;
-    transition: all 0.2s;
-}
-
-.size-btn.active {
-    background: #6c63ff;
-    color: #fff;
-}
-
-.size-btn:hover:not(.active) {
-    color: #fff;
-}
-
-/* ========== 主内容 ========== */
+/* ========== 主内容区 ========== */
 #main-content {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 40px 20px;
+    width: 100vw;
+    height: 100vh;
     position: relative;
     z-index: 1;
 }
 
-/* ========== 搜索栏 ========== */
+/* ========== 搜索栏 - 绝对定位，可拖拽 ========== */
 #search-container {
-    width: 100%;
+    position: absolute;
     display: flex;
     justify-content: center;
-    transition: margin-top 0.4s ease;
 }
 
 .search-wrapper {
@@ -475,30 +443,23 @@ body.edit-mode .edit-only.add-link-btn {
     color: rgba(255, 255, 255, 0.5);
 }
 
-/* ========== 书签容器 ========== */
+/* ========== 书签容器 - 无布局约束，分组绝对定位 ========== */
 #bookmarks-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 32px;
-    margin-top: 60px;
+    position: relative;
     width: 100%;
-    max-width: 1100px;
+    height: 100%;
 }
 
-/* ========== 书签分组 ========== */
+/* ========== 书签分组 - 绝对定位 ========== */
 .bookmark-group {
+    position: absolute;
     background: rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(10px);
     border-radius: 16px;
     padding: 20px 24px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     min-width: 200px;
-    transition: all 0.3s;
-}
-
-.bookmark-group:hover {
-    background: rgba(255, 255, 255, 0.12);
+    transition: box-shadow 0.3s;
 }
 
 .group-header {
@@ -584,6 +545,8 @@ body.edit-mode .edit-only.add-link-btn {
 }
 
 .link-icon-wrapper {
+    width: var(--icon-size, 48px);
+    height: var(--icon-size, 48px);
     position: relative;
     display: flex;
     align-items: center;
@@ -613,7 +576,7 @@ body.edit-mode .edit-only.add-link-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: calc(var(--icon-size, 48px) * 0.42);
     opacity: 0.7;
     pointer-events: none;
 }
@@ -656,35 +619,58 @@ body:not(.edit-mode) .link-delete-btn {
     display: none !important;
 }
 
-/* ========== 图标尺寸 ========== */
-/* 小尺寸 */
-body[data-icon-size="small"] .link-icon-wrapper {
-    width: 32px;
+/* ========== 拖拽手柄 ========== */
+.drag-handle {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 20px;
+    height: 20px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 12px;
+    border-radius: 4px;
+    z-index: 5;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.drag-handle:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.search-drag-handle {
+    position: absolute;
+    top: 50%;
+    left: -28px;
+    transform: translateY(-50%);
+    width: 20px;
     height: 32px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 12px;
+    border-radius: 4px;
+    z-index: 5;
+    transition: all 0.2s;
+    user-select: none;
 }
 
-body[data-icon-size="small"] .link-icon-placeholder {
-    font-size: 14px;
+.search-drag-handle:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.15);
 }
 
-/* 中尺寸 */
-body[data-icon-size="medium"] .link-icon-wrapper {
-    width: 48px;
-    height: 48px;
-}
-
-body[data-icon-size="medium"] .link-icon-placeholder {
-    font-size: 20px;
-}
-
-/* 大尺寸 */
-body[data-icon-size="large"] .link-icon-wrapper {
-    width: 64px;
-    height: 64px;
-}
-
-body[data-icon-size="large"] .link-icon-placeholder {
-    font-size: 26px;
+.dragging {
+    opacity: 0.85;
+    box-shadow: 0 8px 32px rgba(108, 99, 255, 0.4) !important;
+    z-index: 50 !important;
 }
 
 /* ========== 添加按钮 ========== */

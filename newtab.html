@@ -37,12 +37,19 @@
                     <option value="baidu">百度</option>
                     <option value="duckduckgo">DuckDuckGo</option>
                     <option value="github">GitHub</option>
+                    <option value="__custom__">⚙ 自定义...</option>
                 </select>
+                <div id="custom-engine-fields" class="hidden" style="margin-top:10px;">
+                    <input type="text" id="custom-engine-name" placeholder="引擎名称 (如: NPM)" style="margin-bottom:6px;">
+                    <input type="text" id="custom-engine-url" placeholder="搜索URL (如: https://npmjs.com/search?q=)">
+                    <p class="setting-hint" style="margin-top:4px;">查询词将被拼接到 URL 末尾</p>
+                </div>
             </div>
-            <!-- 搜索栏垂直位置 -->
+            <!-- 搜索栏垂直位置 (编辑模式下可拖拽) -->
             <div class="setting-group">
-                <label>搜索栏位置: <span id="search-pos-label">40%</span></label>
-                <input type="range" id="search-pos-slider" min="5" max="85" value="40" step="1">
+                <label>搜索栏初始Y位置: <span id="search-pos-label">40%</span></label>
+                <input type="range" id="search-pos-slider" min="2" max="90" value="40" step="1">
+                <p class="setting-hint">编辑模式下可直接拖拽搜索栏到任意位置</p>
             </div>
             <!-- 背景图片 -->
             <div class="setting-group">
@@ -56,12 +63,8 @@
             </div>
             <!-- 图标尺寸 -->
             <div class="setting-group">
-                <label>图标尺寸</label>
-                <div class="size-toggle">
-                    <button data-size="small" class="size-btn">小</button>
-                    <button data-size="medium" class="size-btn active">中</button>
-                    <button data-size="large" class="size-btn">大</button>
-                </div>
+                <label>图标尺寸: <span id="icon-size-label">48px</span></label>
+                <input type="range" id="icon-size-slider" min="32" max="96" value="48" step="4">
             </div>
             <!-- 数据同步 -->
             <div class="setting-group">
