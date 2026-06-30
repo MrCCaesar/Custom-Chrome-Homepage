@@ -259,7 +259,7 @@ async function init() {
     const searchContainer = document.getElementById('search-container');
     if (!searchContainer.querySelector('.search-drag-handle')) {
         const handle = document.createElement('div');
-        handle.className = 'search-drag-handle edit-only';
+        handle.className = 'search-drag-handle';
         handle.dataset.drag = 'search';
         handle.textContent = '⋮';
         searchContainer.appendChild(handle);
@@ -409,7 +409,7 @@ function toggleEditMode() {
 // ============================================================
 function renderAll() {
     renderBookmarks();
-    applyAllPositions();
+    // applyAllPositions 已在 renderBookmarks 内部调用
 }
 
 function renderBookmarks() {
@@ -423,6 +423,8 @@ function renderBookmarks() {
 
     // 程序化绑定图片加载/错误事件（避免 CSP 内联事件违规）
     attachImageEvents();
+    // 渲染后立即应用位置（保留已有位置，为新分组计算默认位置）
+    applyAllPositions();
 }
 
 function attachImageEvents() {
@@ -468,7 +470,7 @@ function createGroupElement(group, groupIndex) {
         : '';
 
     div.innerHTML = `
-    <div class="drag-handle edit-only" data-drag="group" data-group-index="${groupIndex}">⋮⋮</div>
+    <div class="drag-handle" data-drag="group" data-group-index="${groupIndex}">⋮⋮</div>
     ${group.backgroundImage ? `<div class="group-bg" style="${bgStyle}"></div><div class="group-bg-overlay"></div>` : ''}
     <div class="group-header">
       <span class="group-title" data-group-index="${groupIndex}" title="点击编辑分组名称">${escapeHtml(group.name)}</span>
@@ -960,10 +962,14 @@ function deleteGroup(groupIndex) {
 }
 
 function addGroup() {
+    // 新分组初始位置：画布中央偏上，避开已有分组
+    const defaultX = Math.max(60, (window.innerWidth - 240) / 2);
+    const defaultY = Math.max(120, window.innerHeight * 0.3);
     bookmarks.push({
         name: '新分组',
         backgroundImage: '',
-        posX: null, posY: null,
+        posX: defaultX,
+        posY: defaultY,
         links: [],
     });
     saveBookmarks().then(() => {
