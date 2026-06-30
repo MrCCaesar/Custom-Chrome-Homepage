@@ -491,14 +491,19 @@ function createGroupElement(group, groupIndex) {
     // 游戏分组
     if (group.type === 'game') {
         div.classList.add('game-box');
-        const w = group.width || 240;
-        const h = group.height || (group.gameType === 'tetris' ? 400 : 300);
-        div.style.width = w + 'px';
-        div.style.height = (h + 36) + 'px';  // 36 for header + info
+        const sl = group.sizeLevel || 'small';
+        const sz = getGameSize(group.gameType, sl);
+        div.style.width = sz.w + 'px';
+        div.style.height = (sz.h + 36) + 'px';  // 36 for header + info
         div.innerHTML = `
     <div class="drag-handle" data-drag="group" data-group-index="${groupIndex}">⋮⋮</div>
     <div class="group-header">
       <span class="group-title" data-group-index="${groupIndex}" title="点击编辑名称">${escapeHtml(group.name)}</span>
+      <div class="game-size-btns edit-only">
+        <button class="game-size-btn${sl === 'small' ? ' active' : ''}" data-action="game-size" data-group-index="${groupIndex}" data-level="small">S</button>
+        <button class="game-size-btn${sl === 'medium' ? ' active' : ''}" data-action="game-size" data-group-index="${groupIndex}" data-level="medium">M</button>
+        <button class="game-size-btn${sl === 'large' ? ' active' : ''}" data-action="game-size" data-group-index="${groupIndex}" data-level="large">L</button>
+      </div>
       <div class="group-actions edit-only">
         <button class="group-action-btn delete" data-action="delete-group" data-group-index="${groupIndex}" title="删除">✕</button>
       </div>
@@ -840,6 +845,9 @@ function bindEvents() {
             case 'group-bg-clear':
                 clearGroupBg(groupIndex);
                 break;
+            case 'game-size':
+                setGameSize(groupIndex, target.dataset.level);
+                break;
             case 'swap-left':
                 e.preventDefault();
                 e.stopPropagation();
@@ -1064,14 +1072,38 @@ function addGame(gameType) {
     const defaultX = Math.max(60, (window.innerWidth - 260) / 2);
     const defaultY = Math.max(80, window.innerHeight * 0.2);
     const name = gameType === 'tetris' ? '俄罗斯方块' : '贪吃蛇';
-    const w = gameType === 'tetris' ? 220 : 280;
-    const h = gameType === 'tetris' ? 400 : 300;
+    const sz = getGameSize(gameType, 'small');
     bookmarks.push({
-        name, type: 'game', gameType,
-        width: w, height: h,
+        name, type: 'game', gameType, sizeLevel: 'small',
+        width: sz.w, height: sz.h,
         backgroundImage: '', posX: defaultX, posY: defaultY,
         links: [],
     });
+    saveBookmarks().then(() => renderBookmarks());
+}
+
+function getGameSize(gameType, level) {
+    const maxW = Math.floor(window.innerWidth * 0.7);
+    const maxH = Math.floor(window.innerHeight * 0.7);
+    if (level === 'large') {
+        if (gameType === 'tetris') {
+            const w = Math.min(maxW, Math.floor(maxH * 220 / 400));
+            return { w, h: Math.floor(w * 400 / 220) };
+        }
+        return { w: Math.min(maxW, maxH), h: Math.min(maxW, maxH) };
+    }
+    if (level === 'medium') {
+        return gameType === 'tetris' ? { w: 300, h: 540 } : { w: 380, h: 400 };
+    }
+    return gameType === 'tetris' ? { w: 220, h: 400 } : { w: 280, h: 300 };
+}
+
+function setGameSize(groupIndex, level) {
+    const g = bookmarks[groupIndex];
+    if (!g || g.type !== 'game') return;
+    g.sizeLevel = level;
+    const sz = getGameSize(g.gameType, level);
+    g.width = sz.w; g.height = sz.h;
     saveBookmarks().then(() => renderBookmarks());
 }
 
