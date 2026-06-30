@@ -449,6 +449,8 @@ function renderBookmarks() {
     // 渲染后立即应用位置（保留已有位置，为新分组计算默认位置）
     applyAllPositions();
     applyLinksPerRow();
+    // 初始化游戏
+    initGames();
 }
 
 function attachImageEvents() {
@@ -485,6 +487,29 @@ function createGroupElement(group, groupIndex) {
     const div = document.createElement('div');
     div.className = 'bookmark-group';
     div.dataset.groupIndex = groupIndex;
+
+    // 游戏分组
+    if (group.type === 'game') {
+        div.classList.add('game-box');
+        const w = group.width || 240;
+        const h = group.height || (group.gameType === 'tetris' ? 400 : 300);
+        div.style.width = w + 'px';
+        div.style.height = (h + 36) + 'px';  // 36 for header + info
+        div.innerHTML = `
+    <div class="drag-handle" data-drag="group" data-group-index="${groupIndex}">⋮⋮</div>
+    <div class="group-header">
+      <span class="group-title" data-group-index="${groupIndex}" title="点击编辑名称">${escapeHtml(group.name)}</span>
+      <div class="group-actions edit-only">
+        <button class="group-action-btn delete" data-action="delete-group" data-group-index="${groupIndex}" title="删除">✕</button>
+      </div>
+    </div>
+    <div class="game-canvas-wrap"><canvas></canvas></div>
+    <div class="game-info">得分: <span class="game-score">0</span></div>
+  `;
+        return div;
+    }
+
+    // 普通链接分组
     if (group.backgroundImage) {
         div.classList.add('has-group-bg');
     }
@@ -880,6 +905,8 @@ function bindEvents() {
 
     // ---------- 添加分组 ----------
     document.getElementById('add-group-btn').addEventListener('click', addGroup);
+    document.getElementById('add-tetris-btn').addEventListener('click', () => addGame('tetris'));
+    document.getElementById('add-snake-btn').addEventListener('click', () => addGame('snake'));
 
     // ---------- 键盘快捷键 ----------
     document.addEventListener('keydown', (e) => {
@@ -1033,6 +1060,21 @@ function addGroup() {
     });
 }
 
+function addGame(gameType) {
+    const defaultX = Math.max(60, (window.innerWidth - 260) / 2);
+    const defaultY = Math.max(80, window.innerHeight * 0.2);
+    const name = gameType === 'tetris' ? '俄罗斯方块' : '贪吃蛇';
+    const w = gameType === 'tetris' ? 220 : 280;
+    const h = gameType === 'tetris' ? 400 : 300;
+    bookmarks.push({
+        name, type: 'game', gameType,
+        width: w, height: h,
+        backgroundImage: '', posX: defaultX, posY: defaultY,
+        links: [],
+    });
+    saveBookmarks().then(() => renderBookmarks());
+}
+
 // ============================================================
 //  分组背景图操作
 // ============================================================
@@ -1162,6 +1204,197 @@ function observeChromeNtpElements() {
     observer.observe(document.documentElement, { childList: true, subtree: true });
     setTimeout(() => observer.disconnect(), 10000);
 }
+
+// ============================================================
+//  游戏引擎
+// ============================================================
+const gameInstances = {};
+
+function initGames() {
+    document.querySelectorAll('.game-box').forEach((box) => {
+        const gi = parseInt(box.dataset.groupIndex);
+        const group = bookmarks[gi];
+        if (!group || group.type !== 'game') return;
+        const canvas = box.querySelector('canvas');
+        const scoreEl = box.querySelector('.game-score');
+        if (!canvas || !scoreEl) return;
+
+        if (gameInstances[gi]) gameInstances[gi].destroy();
+        const w = group.width || 240;
+        const h = group.height || 400;
+        canvas.width = w;
+        canvas.height = h;
+
+        const GameClass = group.gameType === 'tetris' ? TetrisGame : SnakeGame;
+        gameInstances[gi] = new GameClass(canvas, scoreEl, w, h);
+        canvas.onclick = () => {
+            const inst = gameInstances[gi];
+            if (!inst) return;
+            if (inst.gameOver) { inst.restart(); return; }
+            inst.running ? inst.pause() : inst.start();
+        };
+    });
+    Object.keys(gameInstances).forEach((k) => {
+        if (!document.querySelector(`.game-box[data-group-index="${k}"]`)) {
+            gameInstances[k].destroy();
+            delete gameInstances[k];
+        }
+    });
+}
+
+class TetrisGame {
+    constructor(canvas, scoreEl, w, h) {
+        this.c = canvas; this.ctx = canvas.getContext('2d');
+        this.scoreEl = scoreEl; this.w = w; this.h = h;
+        this.cell = Math.floor(Math.min(w / 10, h / 22));
+        this.ox = Math.floor((w - this.cell * 10) / 2);
+        this.oy = Math.floor((h - this.cell * 20) / 2);
+        this.colors = ['#0ff', '#00f', '#f80', '#ff0', '#0f0', '#90f', '#f00'];
+        this.shapes = [
+            [[1, 1, 1, 1]], [[1, 1], [1, 1]], [[0, 1, 0], [1, 1, 1]],
+            [[1, 0, 0], [1, 1, 1]], [[0, 0, 1], [1, 1, 1]],
+            [[0, 1, 1], [1, 1, 0]], [[1, 1, 0], [0, 1, 1]]
+        ];
+        this.reset();
+    }
+    reset() {
+        this.board = Array(20).fill(null).map(() => Array(10).fill(0));
+        this.score = 0; this.gameOver = false; this.running = false;
+        this.spawn(); this.draw();
+    }
+    spawn() {
+        const id = Math.floor(Math.random() * 7);
+        this.piece = { shape: this.shapes[id].map(r => [...r]), color: id, x: 3, y: 0 };
+        if (!this.valid(this.piece.shape, this.piece.x, this.piece.y)) this.gameOver = true;
+    }
+    valid(shape, px, py) {
+        for (let r = 0; r < shape.length; r++)
+            for (let c = 0; c < shape[r].length; c++)
+                if (shape[r][c] && (py + r >= 20 || px + c < 0 || px + c >= 10 || (py + r >= 0 && this.board[py + r][px + c]))) return false;
+        return true;
+    }
+    place() {
+        const { shape, color, x, y } = this.piece;
+        shape.forEach((row, r) => row.forEach((v, c) => { if (v && y + r >= 0) this.board[y + r][x + c] = color + 1; }));
+        let cleared = 0;
+        for (let r = 19; r >= 0; r--) {
+            if (this.board[r].every(v => v)) { this.board.splice(r, 1); this.board.unshift(Array(10).fill(0)); cleared++; r++; }
+        }
+        if (cleared) this.score += [0, 100, 300, 500, 800][cleared];
+        this.scoreEl.textContent = this.score;
+        this.spawn();
+    }
+    move(dx, dy) {
+        if (!this.running || this.gameOver) return;
+        if (this.valid(this.piece.shape, this.piece.x + dx, this.piece.y + dy)) { this.piece.x += dx; this.piece.y += dy; }
+        else if (dy === 1) { this.place(); if (this.gameOver) { this.running = false; this.draw(); } }
+        this.draw();
+    }
+    rotate() {
+        if (!this.running || this.gameOver) return;
+        const s = this.piece.shape, n = s.length, m = s[0].length;
+        const r = Array(m).fill(null).map((_, i) => s.map(r => r[m - 1 - i]));
+        if (this.valid(r, this.piece.x, this.piece.y)) this.piece.shape = r;
+        this.draw();
+    }
+    hardDrop() {
+        while (this.valid(this.piece.shape, this.piece.x, this.piece.y + 1)) this.piece.y++;
+        this.place();
+        if (this.gameOver) { this.running = false; this.draw(); return; }
+        this.draw();
+    }
+    draw() {
+        const { ctx, cell, ox, oy, board } = this;
+        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, this.w, this.h);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 0.5;
+        for (let r = 0; r <= 20; r++) { ctx.beginPath(); ctx.moveTo(ox, oy + r * cell); ctx.lineTo(ox + 10 * cell, oy + r * cell); ctx.stroke(); }
+        for (let c = 0; c <= 10; c++) { ctx.beginPath(); ctx.moveTo(ox + c * cell, oy); ctx.lineTo(ox + c * cell, oy + 20 * cell); ctx.stroke(); }
+        board.forEach((row, r) => row.forEach((v, c) => { if (v) { ctx.fillStyle = this.colors[v - 1]; ctx.fillRect(ox + c * cell + 1, oy + r * cell + 1, cell - 2, cell - 2); } }));
+        if (!this.gameOver && this.piece) {
+            ctx.fillStyle = this.colors[this.piece.color];
+            this.piece.shape.forEach((row, r) => row.forEach((v, c) => { if (v) ctx.fillRect(ox + (this.piece.x + c) * cell + 1, oy + (this.piece.y + r) * cell + 1, cell - 2, cell - 2); }));
+        }
+        if (this.gameOver) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, this.w, this.h); ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('游戏结束', this.w / 2, this.h / 2 - 10); ctx.font = '11px sans-serif'; ctx.fillText('点击重新开始', this.w / 2, this.h / 2 + 14); }
+        else if (!this.running) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, this.w, this.h); ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('点击开始', this.w / 2, this.h / 2); }
+        ctx.textAlign = 'start';
+    }
+    start() { if (!this.gameOver) { this.running = true; this.loop(); } }
+    pause() { this.running = false; this.draw(); }
+    loop() { if (!this.running) return; this.move(0, 1); this.timer = setTimeout(() => this.loop(), Math.max(80, 500 - this.score / 2)); }
+    restart() { clearTimeout(this.timer); this.reset(); this.start(); }
+    destroy() { clearTimeout(this.timer); this.running = false; }
+}
+
+class SnakeGame {
+    constructor(canvas, scoreEl, w, h) {
+        this.c = canvas; this.ctx = canvas.getContext('2d');
+        this.scoreEl = scoreEl; this.w = w; this.h = h;
+        this.grid = 20; this.cols = Math.floor(w / this.grid); this.rows = Math.floor(h / this.grid);
+        this.reset();
+    }
+    reset() {
+        this.snake = [{ x: Math.floor(this.cols / 2), y: Math.floor(this.rows / 2) }];
+        this.dir = { x: 1, y: 0 }; this.nextDir = { x: 1, y: 0 };
+        this.food = this.randFood();
+        this.score = 0; this.gameOver = false; this.running = false;
+        this.draw();
+    }
+    randFood() {
+        let f;
+        do { f = { x: Math.floor(Math.random() * this.cols), y: Math.floor(Math.random() * this.rows) }; }
+        while (this.snake.some(s => s.x === f.x && s.y === f.y));
+        return f;
+    }
+    tick() {
+        if (this.gameOver || !this.running) return;
+        this.dir = { ...this.nextDir };
+        const head = { x: this.snake[0].x + this.dir.x, y: this.snake[0].y + this.dir.y };
+        if (head.x < 0 || head.x >= this.cols || head.y < 0 || head.y >= this.rows || this.snake.some(s => s.x === head.x && s.y === head.y)) {
+            this.gameOver = true; this.running = false; this.draw(); return;
+        }
+        this.snake.unshift(head);
+        if (head.x === this.food.x && head.y === this.food.y) { this.score += 10; this.scoreEl.textContent = this.score; this.food = this.randFood(); }
+        else this.snake.pop();
+        this.draw();
+    }
+    draw() {
+        const { ctx, grid, snake, food } = this;
+        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, this.w, this.h);
+        ctx.fillStyle = '#4f4'; snake.forEach(s => ctx.fillRect(s.x * grid + 1, s.y * grid + 1, grid - 2, grid - 2));
+        ctx.fillStyle = '#f44'; ctx.fillRect(food.x * grid + 2, food.y * grid + 2, grid - 4, grid - 4);
+        if (this.gameOver) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, this.w, this.h); ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('游戏结束', this.w / 2, this.h / 2 - 10); ctx.font = '11px sans-serif'; ctx.fillText('得分: ' + this.score, this.w / 2, this.h / 2 + 14); }
+        else if (!this.running) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, this.w, this.h); ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('点击开始', this.w / 2, this.h / 2); }
+        ctx.textAlign = 'start';
+    }
+    start() { if (!this.gameOver) { this.running = true; this.loop(); } }
+    pause() { this.running = false; this.draw(); }
+    loop() { if (!this.running) return; this.tick(); this.timer = setTimeout(() => this.loop(), Math.max(60, 150 - this.score / 2)); }
+    restart() { clearTimeout(this.timer); this.reset(); this.start(); }
+    destroy() { clearTimeout(this.timer); this.running = false; }
+}
+
+// ===== 全局键盘控制 =====
+document.addEventListener('keydown', (e) => {
+    for (const [gi, game] of Object.entries(gameInstances)) {
+        if (!game.running || game.gameOver) continue;
+        if (game instanceof TetrisGame) {
+            switch (e.key) {
+                case 'ArrowLeft': e.preventDefault(); game.move(-1, 0); break;
+                case 'ArrowRight': e.preventDefault(); game.move(1, 0); break;
+                case 'ArrowDown': e.preventDefault(); game.move(0, 1); break;
+                case 'ArrowUp': e.preventDefault(); game.rotate(); break;
+                case ' ': e.preventDefault(); game.hardDrop(); break;
+            }
+        } else if (game instanceof SnakeGame) {
+            switch (e.key) {
+                case 'ArrowLeft': if (game.dir.x !== 1) { e.preventDefault(); game.nextDir = { x: -1, y: 0 }; } break;
+                case 'ArrowRight': if (game.dir.x !== -1) { e.preventDefault(); game.nextDir = { x: 1, y: 0 }; } break;
+                case 'ArrowUp': if (game.dir.y !== 1) { e.preventDefault(); game.nextDir = { x: 0, y: -1 }; } break;
+                case 'ArrowDown': if (game.dir.y !== -1) { e.preventDefault(); game.nextDir = { x: 0, y: 1 }; } break;
+            }
+        }
+    }
+});
 
 // ============================================================
 //  启动

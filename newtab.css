@@ -726,6 +726,69 @@ body:not(.edit-mode) .link-swap-right {
     z-index: 50 !important;
 }
 
+/* ========== 游戏盒 ========== */
+.bookmark-group.game-box {
+    padding: 8px;
+    min-width: 160px;
+    cursor: default;
+}
+
+.game-canvas-wrap {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+}
+
+.game-canvas-wrap canvas {
+    border-radius: 8px;
+    display: block;
+}
+
+.game-info {
+    text-align: center;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+    z-index: 2;
+    position: relative;
+}
+
+.game-over-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    z-index: 3;
+    gap: 8px;
+}
+
+.game-over-overlay span {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.game-over-overlay button {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.game-over-overlay button:hover {
+    background: rgba(108, 99, 255, 0.4);
+}
+
 /* ========== 添加按钮 ========== */
 .add-link-btn {
     width: 100%;
@@ -748,6 +811,10 @@ body:not(.edit-mode) .link-swap-right {
 
 #add-group-area {
     margin-top: 40px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 
 .add-btn {
