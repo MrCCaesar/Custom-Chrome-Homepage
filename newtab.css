@@ -402,6 +402,7 @@ body.edit-mode .edit-only.add-link-btn {
     position: absolute;
     display: flex;
     justify-content: center;
+    z-index: 10;
 }
 
 .search-wrapper {
@@ -448,6 +449,12 @@ body.edit-mode .edit-only.add-link-btn {
     position: relative;
     width: 100%;
     height: 100%;
+    pointer-events: none;
+    /* 容器不拦截事件，由子元素各自处理 */
+}
+
+#bookmarks-container>* {
+    pointer-events: auto;
 }
 
 /* ========== 书签分组 - 绝对定位 ========== */

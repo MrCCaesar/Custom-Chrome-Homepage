@@ -319,9 +319,9 @@ function applyAllPositions() {
         searchEl.style.top = settings.searchPosY + 'px';
         searchEl.style.transform = 'none';
     } else {
-        // 默认居中
+        // 默认：水平居中，垂直由滑块决定
         searchEl.style.left = '50%';
-        searchEl.style.top = settings.searchPosition + 'vh';
+        searchEl.style.top = (settings.searchPosition || 40) + 'vh';
         searchEl.style.transform = 'translateX(-50%)';
     }
     // 搜索栏拖拽手柄
@@ -331,16 +331,39 @@ function applyAllPositions() {
     }
 
     // 分组位置
-    document.querySelectorAll('.bookmark-group').forEach((el) => {
+    const groups = document.querySelectorAll('.bookmark-group');
+    groups.forEach((el, visibleIndex) => {
         const gi = parseInt(el.dataset.groupIndex);
         const g = bookmarks[gi];
         if (g && g.posX !== null && g.posY !== null) {
             el.style.left = g.posX + 'px';
             el.style.top = g.posY + 'px';
+        } else {
+            // 默认网格定位（3列）
+            const col = visibleIndex % 3;
+            const row = Math.floor(visibleIndex / 3);
+            const cellW = 240, cellH = 180, gapX = 28, gapY = 28;
+            const startX = Math.max(40, (window.innerWidth - (3 * cellW + 2 * gapX)) / 2);
+            const searchBottom = searchEl.offsetTop + searchEl.offsetHeight;
+            const startY = Math.max(searchBottom + 40, 180);
+            el.style.left = (startX + col * (cellW + gapX)) + 'px';
+            el.style.top = (startY + row * (cellH + gapY)) + 'px';
         }
-        // 拖拽手柄
+        // 拖拽手柄显隐
         const handle = el.querySelector('.drag-handle');
         if (handle) handle.style.display = editMode ? 'flex' : 'none';
+    });
+}
+
+function resetAllPositions() {
+    settings.searchPosX = null;
+    settings.searchPosY = null;
+    settings.searchPosition = 40;
+    bookmarks.forEach((g) => { g.posX = null; g.posY = null; });
+    Promise.all([saveSettings(), saveBookmarks()]).then(() => {
+        applyAllPositions();
+        document.getElementById('search-pos-slider').value = 40;
+        document.getElementById('search-pos-label').textContent = '40%';
     });
 }
 
@@ -599,6 +622,9 @@ function bindEvents() {
         if (file) importAllData(file);
         e.target.value = '';
     });
+
+    // 恢复默认位置
+    document.getElementById('reset-positions-btn').addEventListener('click', resetAllPositions);
 
     // 搜索引擎切换
     document.getElementById('search-engine-select').addEventListener('change', (e) => {
